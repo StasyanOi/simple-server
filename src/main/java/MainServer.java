@@ -5,10 +5,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
@@ -56,8 +53,19 @@ public class MainServer {
 
     private static void requestMatchers(Socket accept, BufferedReader bufferedReader, BufferedWriter bufferedWriter) throws IOException {
 //        showRequest(accept);
-        List<String> requestLines = getRequest(bufferedReader);
-
+        List<Character> ints = new ArrayList<>();
+        while (bufferedReader.ready()) {
+            ints.add((char) bufferedReader.read());
+        }
+        String collect = ints.stream().map(Object::toString).collect(Collectors.joining());
+        Scanner scanner = new Scanner(collect);
+        List<String> requestLines = new ArrayList<>();
+        while (scanner.hasNext()) {
+            requestLines.add(scanner.nextLine());
+        }
+        if (requestLines.size() == 0) {
+            accept.close();
+        }
         if (getHomePage(requestLines)) {
             requestLines.forEach(System.out::println);
             Path path = Paths.get("Hello.html");
@@ -83,7 +91,38 @@ public class MainServer {
                 bufferedOutputStream.flush();
             }
         } else if (fileForSaving(requestLines)) {
-            requestLines.forEach(System.out::println);
+            String req = collect;
+            System.out.println(req);
+            Pattern pattern = Pattern.compile("boundary=.+\r\n");
+            Matcher matcher = pattern.matcher(req);
+//            boundary=----WebKitFormBoundary7W9ZBDRZUVVFxprE
+//            boundary=----WebKitFormBoundaryPAxf1C6lJMCelFYw
+//            boundary=----WebKitFormBoundarypaO4tPMoDpRDJ86U
+
+            if (matcher.find()) {
+                String keyValue = matcher.group();
+                String delimit = keyValue.split("=")[1];
+                String delimiter = "--" + delimit;
+                System.out.println(delimiter);
+                String[] split = collect.split(delimiter);
+                System.out.println(split);
+                String request = split[0];
+                String file = split[1];
+                Pattern pattern1 = Pattern.compile("\r\n\r\n");
+                Matcher matcher1 = pattern1.matcher(file);
+                boolean b = matcher1.find();
+                int fileStart = matcher1.start() + 4;
+                byte[] bytes = file.substring(fileStart).getBytes();
+                FileOutputStream fileOutputStream = new FileOutputStream("test.png");
+                fileOutputStream.write(bytes);
+                fileOutputStream.flush();
+
+
+
+                String submit = split[2];
+            }
+            String[] split = req.split("------WebKitFormBoundaryHshHAD5NK286MxVu");
+
         }
         accept.close();
     }
