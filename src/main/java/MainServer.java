@@ -53,11 +53,15 @@ public class MainServer {
 
     private static void requestMatchers(Socket accept, BufferedReader bufferedReader, BufferedWriter bufferedWriter) throws IOException {
 //        showRequest(accept);
-        List<Character> ints = new ArrayList<>();
-        while (bufferedReader.ready()) {
-            ints.add((char) bufferedReader.read());
+        BufferedInputStream bufferedInputStream = new BufferedInputStream(accept.getInputStream());
+        List<Integer> ints = new ArrayList<>();
+        while (bufferedInputStream.available() != 0) {
+            int read = bufferedInputStream.read();
+            System.out.println((char) read);
+            ints.add(read);
         }
-        String collect = ints.stream().map(Object::toString).collect(Collectors.joining());
+        String collect = ints.stream().map(integer -> (char) integer.intValue())
+                .map(Object::toString).collect(Collectors.joining());
         Scanner scanner = new Scanner(collect);
         List<String> requestLines = new ArrayList<>();
         while (scanner.hasNext()) {
@@ -112,16 +116,18 @@ public class MainServer {
                 Matcher matcher1 = pattern1.matcher(file);
                 boolean b = matcher1.find();
                 int fileStart = matcher1.start() + 4;
-                byte[] bytes = file.substring(fileStart).getBytes();
+                String substring = file.substring(fileStart);
+                String substring1 = substring.substring(0, substring.length() - 2);
+                int[] ints1 = substring1.chars().toArray();
                 FileOutputStream fileOutputStream = new FileOutputStream("test.png");
-                fileOutputStream.write(bytes);
+                for (int i = 0; i < ints1.length; i++) {
+                    fileOutputStream.write(ints1[i]);
+                }
                 fileOutputStream.flush();
-
 
 
                 String submit = split[2];
             }
-            String[] split = req.split("------WebKitFormBoundaryHshHAD5NK286MxVu");
 
         }
         accept.close();
