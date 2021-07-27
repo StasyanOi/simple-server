@@ -1,2 +1,2 @@
 # simple-server
-simple java server based on java sockets
+simple java file server based on java sockets
