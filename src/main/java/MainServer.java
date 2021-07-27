@@ -57,7 +57,6 @@ public class MainServer {
         List<Integer> ints = new ArrayList<>();
         while (bufferedInputStream.available() != 0) {
             int read = bufferedInputStream.read();
-            System.out.println((char) read);
             ints.add(read);
         }
         String collect = ints.stream().map(integer -> (char) integer.intValue())
@@ -83,7 +82,7 @@ public class MainServer {
             bufferedWriter.write(new HttpResponse(200, String.join("\n", html), MimeType.html.getContentType()).responseString());
             bufferedWriter.flush();
         } else if (getFile(requestLines)) {
-            String fileName = requestLines.get(0).split(" ")[1];
+            String fileName = requestLines.get(0).split(" ")[1].replace("%20", " ");
             requestLines.forEach(System.out::println);
             Path path = Paths.get(fileName);
             if (Files.exists(path)) {
@@ -95,38 +94,32 @@ public class MainServer {
                 bufferedOutputStream.flush();
             }
         } else if (fileForSaving(requestLines)) {
-            String req = collect;
-            System.out.println(req);
             Pattern pattern = Pattern.compile("boundary=.+\r\n");
-            Matcher matcher = pattern.matcher(req);
-//            boundary=----WebKitFormBoundary7W9ZBDRZUVVFxprE
-//            boundary=----WebKitFormBoundaryPAxf1C6lJMCelFYw
-//            boundary=----WebKitFormBoundarypaO4tPMoDpRDJ86U
-
+            Matcher matcher = pattern.matcher(collect);
             if (matcher.find()) {
                 String keyValue = matcher.group();
                 String delimit = keyValue.split("=")[1];
                 String delimiter = "--" + delimit;
-                System.out.println(delimiter);
                 String[] split = collect.split(delimiter);
-                System.out.println(split);
-                String request = split[0];
                 String file = split[1];
                 Pattern pattern1 = Pattern.compile("\r\n\r\n");
                 Matcher matcher1 = pattern1.matcher(file);
-                boolean b = matcher1.find();
+                matcher1.find();
                 int fileStart = matcher1.start() + 4;
-                String substring = file.substring(fileStart);
-                String substring1 = substring.substring(0, substring.length() - 2);
-                int[] ints1 = substring1.chars().toArray();
-                FileOutputStream fileOutputStream = new FileOutputStream("test.png");
-                for (int i = 0; i < ints1.length; i++) {
-                    fileOutputStream.write(ints1[i]);
+                Pattern pattern2 = Pattern.compile("filename=.+\r\n");
+                Matcher matcher2 = pattern2.matcher(file);
+                if (matcher2.find()) {
+                    String filename = matcher2.group();
+                    String replace = filename.split("=")[1].replace("\"", "");
+                    String substring = file.substring(fileStart);
+                    String substring1 = substring.substring(0, substring.length() - 2);
+                    int[] ints1 = substring1.chars().toArray();
+                    FileOutputStream fileOutputStream = new FileOutputStream(fileFolder + "/" + replace);
+                    for (int i = 0; i < ints1.length; i++) {
+                        fileOutputStream.write(ints1[i]);
+                    }
+                    fileOutputStream.flush();
                 }
-                fileOutputStream.flush();
-
-
-                String submit = split[2];
             }
 
         }
