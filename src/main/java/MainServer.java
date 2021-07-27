@@ -45,13 +45,12 @@ public class MainServer {
 
 
     private static void process(Socket accept) throws IOException {
-        BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(accept.getInputStream()));
         BufferedWriter bufferedWriter = new BufferedWriter(new OutputStreamWriter(accept.getOutputStream()));
 
-        requestMatchers(accept, bufferedReader, bufferedWriter);
+        requestMatchers(accept, bufferedWriter);
     }
 
-    private static void requestMatchers(Socket accept, BufferedReader bufferedReader, BufferedWriter bufferedWriter) throws IOException {
+    private static void requestMatchers(Socket accept, BufferedWriter bufferedWriter) throws IOException {
 
         BufferedInputStream bufferedInputStream = new BufferedInputStream(accept.getInputStream());
         List<Integer> ints = new ArrayList<>();
@@ -91,7 +90,8 @@ public class MainServer {
                 break;
             }
         }
-        bufferedWriter.write(new HttpResponse(200, String.join("\n", html), MimeType.html.getContentType()).responseString());
+        String responseString = new HttpResponse(200, String.join("\n", html), MimeType.html.getContentType()).responseString();
+        bufferedWriter.write(responseString);
         bufferedWriter.flush();
     }
 
@@ -113,31 +113,31 @@ public class MainServer {
         Pattern pattern = Pattern.compile("boundary=.+\r\n");
         Matcher matcher = pattern.matcher(collect);
         if (matcher.find()) {
-            String keyValue = matcher.group();
-            String delimit = keyValue.split("=")[1];
-            String delimiter = "--" + delimit;
-            String[] split = collect.split(delimiter);
-            String file = split[1];
-            Pattern pattern1 = Pattern.compile("\r\n\r\n");
-            Matcher matcher1 = pattern1.matcher(file);
-            matcher1.find();
-            int fileStart = matcher1.start() + 4;
-            Pattern pattern2 = Pattern.compile("filename=.+\r\n");
-            Matcher matcher2 = pattern2.matcher(file);
-            if (matcher2.find()) {
-                String filename = matcher2.group();
-                String replace = filename.split("=")[1].replace("\"", "");
-                String substring = file.substring(fileStart);
-                String substring1 = substring.substring(0, substring.length() - 2);
-                int[] ints1 = substring1.chars().toArray();
-                FileOutputStream fileOutputStream = new FileOutputStream(fileFolder + "/" + replace);
-                for (int i = 0; i < ints1.length; i++) {
-                    fileOutputStream.write(ints1[i]);
+            String keyValueBoundary = matcher.group();
+            String delimiter = keyValueBoundary.split("=")[1];
+            delimiter = "--" + delimiter;
+            String[] requestParts = collect.split(delimiter);
+            String file = requestParts[1];
+            Pattern fileInfoBoundary = Pattern.compile("\r\n\r\n");
+            Matcher fileBoundaryMatcher = fileInfoBoundary.matcher(file);
+            if (fileBoundaryMatcher.find()) {
+                int fileBoundaryStart = fileBoundaryMatcher.start();
+                Pattern filenameInfo = Pattern.compile("filename=.+\r\n");
+                Matcher filenameMatcher = filenameInfo.matcher(file);
+                if (filenameMatcher.find()) {
+                    String keyValueFilename = filenameMatcher.group();
+                    String filename = keyValueFilename.split("=")[1].replace("\"", "");
+                    filename = filename.substring(0, filename.length() - 2);
+                    int fileStart = fileBoundaryStart + 4;
+                    String pureFile = file.substring(fileStart, file.length() - 2);
+                    int[] fileInts = pureFile.chars().toArray();
+                    Path path = Paths.get(fileFolder, filename);
+                    FileOutputStream fileOutputStream = new FileOutputStream(path.toString());
+                    for (int fileInt : fileInts) {
+                        fileOutputStream.write(fileInt);
+                    }
+                    fileOutputStream.flush();
                 }
-                fileOutputStream.flush();
-                Path path = Paths.get(fileFolder, replace);
-                FileOutputStream fileOutputStream1 = new FileOutputStream(fileFolder + "/" + replace);
-                Files.copy(path, fileOutputStream1);
             }
         }
     }
