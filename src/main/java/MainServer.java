@@ -70,60 +70,76 @@ public class MainServer {
             accept.close();
         }
         if (getHomePage(requestLines)) {
-            requestLines.forEach(System.out::println);
-            Path path = Paths.get("Hello.html");
-            List<String> html = Files.lines(path).collect(Collectors.toList());
-            for (int i = 0; i < html.size(); i++) {
-                if (html.get(i).contains("<body>")) {
-                    addFiles(html, i);
-                    break;
-                }
-            }
-            bufferedWriter.write(new HttpResponse(200, String.join("\n", html), MimeType.html.getContentType()).responseString());
-            bufferedWriter.flush();
+            loadHomePage(bufferedWriter, requestLines);
         } else if (getFile(requestLines)) {
-            String fileName = requestLines.get(0).split(" ")[1].replace("%20", " ");
-            requestLines.forEach(System.out::println);
-            Path path = Paths.get(fileName);
-            if (Files.exists(path)) {
-                BufferedOutputStream bufferedOutputStream = new BufferedOutputStream(accept.getOutputStream());
-                byte[] bytes = Files.readAllBytes(path);
-                byte[] header = HttpResponse.responseHeader(bytes, 200, MimeType.undefined.getContentType()).getBytes(StandardCharsets.UTF_8);
-                byte[] total = concatArrays(header, bytes);
-                bufferedOutputStream.write(total);
-                bufferedOutputStream.flush();
-            }
+            loadFile(accept, requestLines);
+            loadHomePage(bufferedWriter, requestLines);
         } else if (fileForSaving(requestLines)) {
-            Pattern pattern = Pattern.compile("boundary=.+\r\n");
-            Matcher matcher = pattern.matcher(collect);
-            if (matcher.find()) {
-                String keyValue = matcher.group();
-                String delimit = keyValue.split("=")[1];
-                String delimiter = "--" + delimit;
-                String[] split = collect.split(delimiter);
-                String file = split[1];
-                Pattern pattern1 = Pattern.compile("\r\n\r\n");
-                Matcher matcher1 = pattern1.matcher(file);
-                matcher1.find();
-                int fileStart = matcher1.start() + 4;
-                Pattern pattern2 = Pattern.compile("filename=.+\r\n");
-                Matcher matcher2 = pattern2.matcher(file);
-                if (matcher2.find()) {
-                    String filename = matcher2.group();
-                    String replace = filename.split("=")[1].replace("\"", "");
-                    String substring = file.substring(fileStart);
-                    String substring1 = substring.substring(0, substring.length() - 2);
-                    int[] ints1 = substring1.chars().toArray();
-                    FileOutputStream fileOutputStream = new FileOutputStream(fileFolder + "/" + replace);
-                    for (int i = 0; i < ints1.length; i++) {
-                        fileOutputStream.write(ints1[i]);
-                    }
-                    fileOutputStream.flush();
-                }
-            }
-
+            saveFile(collect);
+            loadHomePage(bufferedWriter, requestLines);
         }
         accept.close();
+    }
+
+    private static void loadHomePage(BufferedWriter bufferedWriter, List<String> requestLines) throws IOException {
+        requestLines.forEach(System.out::println);
+        Path path = Paths.get("Hello.html");
+        List<String> html = Files.lines(path).collect(Collectors.toList());
+        for (int i = 0; i < html.size(); i++) {
+            if (html.get(i).contains("<body>")) {
+                addFiles(html, i);
+                break;
+            }
+        }
+        bufferedWriter.write(new HttpResponse(200, String.join("\n", html), MimeType.html.getContentType()).responseString());
+        bufferedWriter.flush();
+    }
+
+    private static void loadFile(Socket accept, List<String> requestLines) throws IOException {
+        String fileName = requestLines.get(0).split(" ")[1].replace("%20", " ");
+        requestLines.forEach(System.out::println);
+        Path path = Paths.get(fileName);
+        if (Files.exists(path)) {
+            BufferedOutputStream bufferedOutputStream = new BufferedOutputStream(accept.getOutputStream());
+            byte[] bytes = Files.readAllBytes(path);
+            byte[] header = HttpResponse.responseHeader(bytes, 200, MimeType.undefined.getContentType()).getBytes(StandardCharsets.UTF_8);
+            byte[] total = concatArrays(header, bytes);
+            bufferedOutputStream.write(total);
+            bufferedOutputStream.flush();
+        }
+    }
+
+    private static void saveFile(String collect) throws IOException {
+        Pattern pattern = Pattern.compile("boundary=.+\r\n");
+        Matcher matcher = pattern.matcher(collect);
+        if (matcher.find()) {
+            String keyValue = matcher.group();
+            String delimit = keyValue.split("=")[1];
+            String delimiter = "--" + delimit;
+            String[] split = collect.split(delimiter);
+            String file = split[1];
+            Pattern pattern1 = Pattern.compile("\r\n\r\n");
+            Matcher matcher1 = pattern1.matcher(file);
+            matcher1.find();
+            int fileStart = matcher1.start() + 4;
+            Pattern pattern2 = Pattern.compile("filename=.+\r\n");
+            Matcher matcher2 = pattern2.matcher(file);
+            if (matcher2.find()) {
+                String filename = matcher2.group();
+                String replace = filename.split("=")[1].replace("\"", "");
+                String substring = file.substring(fileStart);
+                String substring1 = substring.substring(0, substring.length() - 2);
+                int[] ints1 = substring1.chars().toArray();
+                FileOutputStream fileOutputStream = new FileOutputStream(fileFolder + "/" + replace);
+                for (int i = 0; i < ints1.length; i++) {
+                    fileOutputStream.write(ints1[i]);
+                }
+                fileOutputStream.flush();
+                Path path = Paths.get(fileFolder, replace);
+                FileOutputStream fileOutputStream1 = new FileOutputStream(fileFolder + "/" + replace);
+                Files.copy(path, fileOutputStream1);
+            }
+        }
     }
 
     private static void showRequest(Socket accept) {
