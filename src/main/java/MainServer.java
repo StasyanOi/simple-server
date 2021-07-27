@@ -52,7 +52,7 @@ public class MainServer {
     }
 
     private static void requestMatchers(Socket accept, BufferedReader bufferedReader, BufferedWriter bufferedWriter) throws IOException {
-//        showRequest(accept);
+
         BufferedInputStream bufferedInputStream = new BufferedInputStream(accept.getInputStream());
         List<Integer> ints = new ArrayList<>();
         while (bufferedInputStream.available() != 0) {
