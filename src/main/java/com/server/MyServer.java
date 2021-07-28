@@ -1,3 +1,8 @@
+package com.server;
+
+import com.MainServer;
+import com.util.MimeType;
+
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -14,14 +19,13 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-public class MainServer {
+public class MyServer implements Server {
 
-    private static String fileFolder;
-
+    private String fileFolder;
     static ExecutorService executorService = Executors.newFixedThreadPool(10);
     static Logger log = Logger.getLogger(MainServer.class.getName());
 
-    public static void main(String[] args) {
+    public void run(String[] args) {
         fileFolder = args[0];
         log.info("Starting server");
         int port = 8081;
@@ -43,14 +47,13 @@ public class MainServer {
         executorService.shutdown();
     }
 
-
-    private static void process(Socket accept) throws IOException {
+    private void process(Socket accept) throws IOException {
         BufferedWriter bufferedWriter = new BufferedWriter(new OutputStreamWriter(accept.getOutputStream()));
 
         requestMatchers(accept, bufferedWriter);
     }
 
-    private static void requestMatchers(Socket accept, BufferedWriter bufferedWriter) throws IOException {
+    private void requestMatchers(Socket accept, BufferedWriter bufferedWriter) throws IOException {
 
         BufferedInputStream bufferedInputStream = new BufferedInputStream(accept.getInputStream());
         List<Integer> ints = new ArrayList<>();
@@ -71,7 +74,11 @@ public class MainServer {
         if (getHomePage(requestLines)) {
             loadHomePage(bufferedWriter, requestLines);
         } else if (getFile(requestLines)) {
-            loadFile(accept, requestLines);
+            if (isFavicon(requestLines.get(0))) {
+                loadFavicon(accept);
+            } else {
+                loadFile(accept, requestLines);
+            }
             loadHomePage(bufferedWriter, requestLines);
         } else if (fileForSaving(requestLines)) {
             saveFile(collect);
@@ -80,7 +87,24 @@ public class MainServer {
         accept.close();
     }
 
-    private static void loadHomePage(BufferedWriter bufferedWriter, List<String> requestLines) throws IOException {
+    private void loadFavicon(Socket accept) throws IOException {
+        String fileName = "./favicon.ico";
+        Path path = Paths.get(fileName);
+        if (Files.exists(path)) {
+            BufferedOutputStream bufferedOutputStream = new BufferedOutputStream(accept.getOutputStream());
+            byte[] bytes = Files.readAllBytes(path);
+            byte[] header = HttpResponse.responseHeader(bytes, 200, MimeType.undefined.getContentType()).getBytes(StandardCharsets.UTF_8);
+            byte[] total = concatArrays(header, bytes);
+            bufferedOutputStream.write(total);
+            bufferedOutputStream.flush();
+        }
+    }
+
+    private boolean isFavicon(String firstRequestLine) {
+        return firstRequestLine.contains("favicon.ico");
+    }
+
+    private void loadHomePage(BufferedWriter bufferedWriter, List<String> requestLines) throws IOException {
         requestLines.forEach(System.out::println);
         Path path = Paths.get("Hello.html");
         List<String> html = Files.lines(path).collect(Collectors.toList());
@@ -95,7 +119,7 @@ public class MainServer {
         bufferedWriter.flush();
     }
 
-    private static void loadFile(Socket accept, List<String> requestLines) throws IOException {
+    private void loadFile(Socket accept, List<String> requestLines) throws IOException {
         String fileName = requestLines.get(0).split(" ")[1].replace("%20", " ");
         requestLines.forEach(System.out::println);
         Path path = Paths.get(fileName);
@@ -109,7 +133,7 @@ public class MainServer {
         }
     }
 
-    private static void saveFile(String collect) throws IOException {
+    private void saveFile(String collect) throws IOException {
         Pattern pattern = Pattern.compile("boundary=.+\r\n");
         Matcher matcher = pattern.matcher(collect);
         if (matcher.find()) {
@@ -142,7 +166,7 @@ public class MainServer {
         }
     }
 
-    private static void showRequest(Socket accept) {
+    private void showRequest(Socket accept) {
         try {
             DataInputStream dataInputStream = new DataInputStream(new BufferedInputStream(accept.getInputStream()));
             System.out.println(dataInputStream.readUTF());
@@ -151,29 +175,29 @@ public class MainServer {
         }
     }
 
-    private static boolean fileForSaving(List<String> requestLines) {
+    private boolean fileForSaving(List<String> requestLines) {
         return requestLines.get(0).contains("POST");
     }
 
-    private static void addFiles(List<String> html, int i) throws IOException {
+    private void addFiles(List<String> html, int i) throws IOException {
         Path path = Paths.get(fileFolder);
         Files.list(path).forEach(s -> html.add(i, getFileLine(s)));
     }
 
-    private static String getFileLine(Path s) {
+    private String getFileLine(Path s) {
         String substring = s.toString();
         String[] split = substring.split("/");
         return "<a href=\"" + substring + "\">" + split[split.length - 1] + "<a>\n";
     }
 
-    private static byte[] concatArrays(byte[] header, byte[] bytes) {
+    private byte[] concatArrays(byte[] header, byte[] bytes) {
         byte[] total = new byte[header.length + bytes.length];
         System.arraycopy(header, 0, total, 0, header.length);
         System.arraycopy(bytes, 0, total, header.length, bytes.length);
         return total;
     }
 
-    private static boolean getFile(List<String> requestLines) {
+    private boolean getFile(List<String> requestLines) {
         if (requestLines.size() != 0) {
             String[] split = requestLines.get(0).split(" ");
             Pattern pattern = Pattern.compile("/+.");
@@ -183,7 +207,7 @@ public class MainServer {
         return false;
     }
 
-    private static boolean getHomePage(List<String> requestLines) {
+    private boolean getHomePage(List<String> requestLines) {
         if (requestLines.size() != 0) {
             String[] split = requestLines.get(0).split(" ");
             return split[0].equals("GET") && split[1].equals("/");
@@ -191,7 +215,7 @@ public class MainServer {
         return false;
     }
 
-    private static List<String> getRequest(BufferedReader bufferedReader) throws IOException {
+    private List<String> getRequest(BufferedReader bufferedReader) throws IOException {
         List<String> requestLines = new ArrayList<>();
         while (bufferedReader.ready()) {
             String readLine = bufferedReader.readLine();

@@ -1,3 +1,5 @@
+package com.util;
+
 public enum MimeType {
 
     $323("text/h323"),
