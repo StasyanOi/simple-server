@@ -89,6 +89,10 @@ public class MyServer implements Server {
 
     private void loadFavicon(Socket accept) throws IOException {
         String fileName = "./favicon.ico";
+        writeFileToSocket(accept, fileName);
+    }
+
+    private void writeFileToSocket(Socket accept, String fileName) throws IOException {
         Path path = Paths.get(fileName);
         if (Files.exists(path)) {
             BufferedOutputStream bufferedOutputStream = new BufferedOutputStream(accept.getOutputStream());
@@ -121,16 +125,7 @@ public class MyServer implements Server {
 
     private void loadFile(Socket accept, List<String> requestLines) throws IOException {
         String fileName = requestLines.get(0).split(" ")[1].replace("%20", " ");
-        requestLines.forEach(System.out::println);
-        Path path = Paths.get(fileName);
-        if (Files.exists(path)) {
-            BufferedOutputStream bufferedOutputStream = new BufferedOutputStream(accept.getOutputStream());
-            byte[] bytes = Files.readAllBytes(path);
-            byte[] header = HttpResponse.responseHeader(bytes, 200, MimeType.undefined.getContentType()).getBytes(StandardCharsets.UTF_8);
-            byte[] total = concatArrays(header, bytes);
-            bufferedOutputStream.write(total);
-            bufferedOutputStream.flush();
-        }
+        writeFileToSocket(accept, fileName);
     }
 
     private void saveFile(String collect) throws IOException {
@@ -163,15 +158,6 @@ public class MyServer implements Server {
                     fileOutputStream.flush();
                 }
             }
-        }
-    }
-
-    private void showRequest(Socket accept) {
-        try {
-            DataInputStream dataInputStream = new DataInputStream(new BufferedInputStream(accept.getInputStream()));
-            System.out.println(dataInputStream.readUTF());
-        } catch (IOException e) {
-            e.printStackTrace();
         }
     }
 
@@ -215,16 +201,6 @@ public class MyServer implements Server {
         return false;
     }
 
-    private List<String> getRequest(BufferedReader bufferedReader) throws IOException {
-        List<String> requestLines = new ArrayList<>();
-        while (bufferedReader.ready()) {
-            String readLine = bufferedReader.readLine();
-            requestLines.add(readLine);
-        }
-        return requestLines;
-    }
-
-
     private static class HttpResponse {
         private final String responseLine;
         private final Map<String, String> headers = new HashMap<>();
@@ -247,11 +223,9 @@ public class MyServer implements Server {
         }
 
         public static String responseHeader(byte[] body, int status, String contentType) {
-            StringBuilder response = new StringBuilder("HTTP/1.1 " + status + crlf);
-            response.append("Content-Type").append(": ").append(contentType).append(crlf);
-            response.append("Content-Length").append(": ").append(body.length).append(crlf);
-            response.append(crlf);
-            return response.toString();
+            return "HTTP/1.1 " + status + crlf + "Content-Type" + ": " + contentType + crlf +
+                    "Content-Length" + ": " + body.length + crlf +
+                    crlf;
         }
     }
 }
