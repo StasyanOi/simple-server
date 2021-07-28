@@ -26,9 +26,17 @@ public class MyServer implements Server {
     static Logger log = Logger.getLogger(MainServer.class.getName());
 
     public void run(String[] args) {
+        if (args.length == 2) {
+            startListener(args);
+        } else {
+            throw new IllegalArgumentException("Illegal arguments " + Arrays.toString(args));
+        }
+    }
+
+    private void startListener(String[] args) {
         fileFolder = args[0];
         log.info("Starting server");
-        int port = 8081;
+        int port = Integer.parseInt(args[1]);
         try (ServerSocket serverSocket = new ServerSocket(port)) {
             log.info("Server starter at port " + port);
             while (true) {
@@ -36,20 +44,32 @@ public class MyServer implements Server {
                 executorService.submit(() -> {
                     try {
                         process(accept);
-                    } catch (IOException e) {
-                        e.printStackTrace();
+                    } catch (Exception e) {
+                        write500Error(accept, e);
                     }
                 });
             }
         } catch (IOException | RejectedExecutionException e) {
-            e.printStackTrace();
+            executorService.shutdown();
+            throw new RuntimeException(e);
         }
-        executorService.shutdown();
+    }
+
+    private void write500Error(Socket accept, Exception e) {
+        byte[] body = e.toString().getBytes(StandardCharsets.UTF_8);
+        byte[] header = HttpResponse.responseHeader(body,
+                200, MimeType.text.getContentType()).getBytes(StandardCharsets.UTF_8);
+        try {
+            writeToSocket(accept, concatArrays(header, body));
+            accept.close();
+        } catch (Exception ex) {
+            log.info("SOCKET EXCEPTION");
+            ex.printStackTrace();
+        }
     }
 
     private void process(Socket accept) throws IOException {
         BufferedWriter bufferedWriter = new BufferedWriter(new OutputStreamWriter(accept.getOutputStream()));
-
         requestMatchers(accept, bufferedWriter);
     }
 
@@ -95,13 +115,17 @@ public class MyServer implements Server {
     private void writeFileToSocket(Socket accept, String fileName) throws IOException {
         Path path = Paths.get(fileName);
         if (Files.exists(path)) {
-            BufferedOutputStream bufferedOutputStream = new BufferedOutputStream(accept.getOutputStream());
             byte[] bytes = Files.readAllBytes(path);
             byte[] header = HttpResponse.responseHeader(bytes, 200, MimeType.undefined.getContentType()).getBytes(StandardCharsets.UTF_8);
             byte[] total = concatArrays(header, bytes);
-            bufferedOutputStream.write(total);
-            bufferedOutputStream.flush();
+            writeToSocket(accept, total);
         }
+    }
+
+    private void writeToSocket(Socket accept, byte[] total) throws IOException {
+        BufferedOutputStream bufferedOutputStream = new BufferedOutputStream(accept.getOutputStream());
+        bufferedOutputStream.write(total);
+        bufferedOutputStream.flush();
     }
 
     private boolean isFavicon(String firstRequestLine) {
