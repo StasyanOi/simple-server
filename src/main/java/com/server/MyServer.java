@@ -1,6 +1,7 @@
 package com.server;
 
 import com.MainServer;
+import com.util.HttpHeaders;
 import com.util.MimeType;
 
 import java.io.*;
@@ -19,6 +20,9 @@ import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+
+import static com.util.Arrays.concatArrays;
+import static com.util.Delimiters.crlf;
 
 public class MyServer implements Server {
 
@@ -68,9 +72,9 @@ public class MyServer implements Server {
                 executorService.submit(() -> {
                     try {
                         process(accept);
-                    } catch (Exception e) {
-                        log.info(e.toString());
-                        write500Error(accept, e);
+                    } catch (Exception exception) {
+                        log.info(exception.toString());
+                        write500Error(accept, exception);
                     }
                 });
             }
@@ -79,12 +83,11 @@ public class MyServer implements Server {
         }
     }
 
-    private void write500Error(Socket accept, Exception e) {
-        byte[] body = e.toString().getBytes(StandardCharsets.UTF_8);
-        byte[] header = HttpResponse.responseHeader(body,
-                200, MimeType.text.getContentType()).getBytes(StandardCharsets.UTF_8);
+    private void write500Error(Socket accept, Exception exception) {
+        HttpResponse httpResponse = HttpResponse.create(500, exception.toString().getBytes(StandardCharsets.UTF_8),
+                MimeType.text);
         try {
-            writeToSocket(accept, concatArrays(header, body));
+            writeToSocket(accept, httpResponse.getBytes());
             accept.close();
         } catch (Exception ex) {
             log.info("SOCKET EXCEPTION");
@@ -93,42 +96,45 @@ public class MyServer implements Server {
     }
 
     private void process(Socket accept) throws IOException {
-        BufferedWriter bufferedWriter = new BufferedWriter(new OutputStreamWriter(accept.getOutputStream()));
-        requestMatchers(accept, bufferedWriter);
+        requestMatchers(accept);
     }
 
-    private void requestMatchers(Socket accept, BufferedWriter bufferedWriter) throws IOException {
-
+    private void requestMatchers(Socket accept) throws IOException {
         BufferedInputStream bufferedInputStream = new BufferedInputStream(accept.getInputStream());
-        List<Integer> ints = new ArrayList<>();
+        BufferedOutputStream bufferedOutputStream = new BufferedOutputStream(accept.getOutputStream());
         if (bufferedInputStream.available() == 0) {
             accept.close();
             return;
         }
+        List<Integer> ints = new ArrayList<>();
         while (bufferedInputStream.available() != 0) {
             int read = bufferedInputStream.read();
             ints.add(read);
         }
-        String collect = ints.stream().map(integer -> (char) integer.intValue())
-                .map(Object::toString).collect(Collectors.joining());
-        Scanner scanner = new Scanner(collect);
+        String request = ints.stream()
+                .map(integer -> (char) integer.intValue())
+                .map(Object::toString)
+                .collect(Collectors.joining());
+        Scanner scanner = new Scanner(request);
         List<String> requestLines = new ArrayList<>();
         while (scanner.hasNext()) {
             requestLines.add(scanner.nextLine());
         }
+
         if (getHomePage(requestLines)) {
-            loadHomePage(bufferedWriter, requestLines);
+            loadHomePage(bufferedOutputStream);
         } else if (getFile(requestLines)) {
-            if (isFavicon(requestLines.get(0))) {
+            if (isFavicon(requestLines)) {
                 loadFavicon(accept);
             } else {
                 loadFile(accept, requestLines);
             }
-            loadHomePage(bufferedWriter, requestLines);
+            loadHomePage(bufferedOutputStream);
         } else if (fileForSaving(requestLines)) {
-            saveFile(collect);
-            loadHomePage(bufferedWriter, requestLines);
+            saveFile(request);
+            loadHomePage(bufferedOutputStream);
         }
+
         accept.close();
     }
 
@@ -140,10 +146,9 @@ public class MyServer implements Server {
     private void writeFileToSocket(Socket accept, String fileName) throws IOException {
         Path path = Paths.get(fileName);
         if (Files.exists(path)) {
-            byte[] bytes = Files.readAllBytes(path);
-            byte[] header = HttpResponse.responseHeader(bytes, 200, MimeType.undefined.getContentType()).getBytes(StandardCharsets.UTF_8);
-            byte[] total = concatArrays(header, bytes);
-            writeToSocket(accept, total);
+            byte[] fileBytes = Files.readAllBytes(path);
+            HttpResponse httpResponse = HttpResponse.create(200, fileBytes, MimeType.undefined);
+            writeToSocket(accept, httpResponse.getBytes());
         }
     }
 
@@ -153,12 +158,11 @@ public class MyServer implements Server {
         bufferedOutputStream.flush();
     }
 
-    private boolean isFavicon(String firstRequestLine) {
-        return firstRequestLine.contains("favicon.ico");
+    private boolean isFavicon(List<String> requestLines) {
+        return requestLines.get(0).contains("favicon.ico");
     }
 
-    private void loadHomePage(BufferedWriter bufferedWriter, List<String> requestLines) throws IOException {
-        requestLines.forEach(System.out::println);
+    private void loadHomePage(BufferedOutputStream bufferedOutputStream) throws IOException {
         Path path = Paths.get("Hello.html");
         List<String> html = Files.lines(path).collect(Collectors.toList());
         for (int i = 0; i < html.size(); i++) {
@@ -167,9 +171,10 @@ public class MyServer implements Server {
                 break;
             }
         }
-        String responseString = new HttpResponse(200, String.join("\n", html), MimeType.html.getContentType()).responseString();
-        bufferedWriter.write(responseString);
-        bufferedWriter.flush();
+        HttpResponse httpResponse = HttpResponse.create(200, String.join("\n", html).getBytes(StandardCharsets.UTF_8),
+                MimeType.html);
+        bufferedOutputStream.write(httpResponse.getBytes());
+        bufferedOutputStream.flush();
     }
 
     private void loadFile(Socket accept, List<String> requestLines) throws IOException {
@@ -177,14 +182,14 @@ public class MyServer implements Server {
         writeFileToSocket(accept, fileName);
     }
 
-    private void saveFile(String collect) throws IOException {
-        Pattern pattern = Pattern.compile("boundary=.+\r\n");
-        Matcher matcher = pattern.matcher(collect);
-        if (matcher.find()) {
-            String keyValueBoundary = matcher.group();
+    private void saveFile(String request) throws IOException {
+        Pattern boundaryPattern = Pattern.compile("boundary=.+\r\n");
+        Matcher boundaryMatcher = boundaryPattern.matcher(request);
+        if (boundaryMatcher.find()) {
+            String keyValueBoundary = boundaryMatcher.group();
             String delimiter = keyValueBoundary.split("=")[1];
             delimiter = "--" + delimiter;
-            String[] requestParts = collect.split(delimiter);
+            String[] requestParts = request.split(delimiter);
             String file = requestParts[1];
             Pattern fileInfoBoundary = Pattern.compile("\r\n\r\n");
             Matcher fileBoundaryMatcher = fileInfoBoundary.matcher(file);
@@ -225,13 +230,6 @@ public class MyServer implements Server {
         return "<a href=\"" + substring + "\">" + split[split.length - 1] + "<a>\n";
     }
 
-    private byte[] concatArrays(byte[] header, byte[] bytes) {
-        byte[] total = new byte[header.length + bytes.length];
-        System.arraycopy(header, 0, total, 0, header.length);
-        System.arraycopy(bytes, 0, total, header.length, bytes.length);
-        return total;
-    }
-
     private boolean getFile(List<String> requestLines) {
         if (requestLines.size() != 0) {
             String[] split = requestLines.get(0).split(" ");
@@ -251,30 +249,37 @@ public class MyServer implements Server {
     }
 
     private static class HttpResponse {
-        private final String responseLine;
-        private final Map<String, String> headers = new HashMap<>();
-        private final String body;
-        private static final String crlf = "\r\n";
 
-        public HttpResponse(int status, String body, String contentType) {
-            responseLine = "HTTP/1.1 " + status;
-            headers.put("Content-Type", contentType);
-            headers.put("Content-Length", "" + body.length());
+        private final int status;
+        private final MimeType contentType;
+        private final byte[] body;
+        private final HashMap<String, String> headers;
+
+        public static HttpResponse create(int status, byte[] body, MimeType contentType) {
+            return new HttpResponse(status, body, contentType);
+        }
+
+        private HttpResponse(int status, byte[] body, MimeType contentType) {
+            this.status = status;
+            this.contentType = contentType;
             this.body = body;
+            this.headers = new HashMap<>();
+            addHeaders();
         }
 
-        public String responseString() {
-            StringBuilder response = new StringBuilder(responseLine + crlf);
-            headers.forEach((key, val) -> response.append(key).append(": ").append(val).append(crlf));
-            response.append(crlf);
-            response.append(body);
-            return response.toString();
+        private void addHeaders() {
+            headers.put(HttpHeaders.CONTENT_TYPE, contentType.getContentType());
+            headers.put(HttpHeaders.CONTENT_LENGTH, String.valueOf(body.length));
         }
 
-        public static String responseHeader(byte[] body, int status, String contentType) {
-            return "HTTP/1.1 " + status + crlf + "Content-Type" + ": " + contentType + crlf +
-                    "Content-Length" + ": " + body.length + crlf +
-                    crlf;
+        private byte[] getBytes() {
+            String headers = this.headers.entrySet().stream()
+                    .map(header -> header.getKey() + ": " + header.getValue() + crlf)
+                    .collect(Collectors.joining());
+            String requestHeader = "HTTP/1.1 " + status + crlf
+                    + headers
+                    + crlf;
+            return concatArrays(requestHeader.getBytes(StandardCharsets.UTF_8), body);
         }
     }
 }
