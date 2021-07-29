@@ -69,6 +69,7 @@ public class MyServer implements Server {
                     try {
                         process(accept);
                     } catch (Exception e) {
+                        log.info(e.toString());
                         write500Error(accept, e);
                     }
                 });
@@ -100,6 +101,10 @@ public class MyServer implements Server {
 
         BufferedInputStream bufferedInputStream = new BufferedInputStream(accept.getInputStream());
         List<Integer> ints = new ArrayList<>();
+        if (bufferedInputStream.available() == 0) {
+            accept.close();
+            return;
+        }
         while (bufferedInputStream.available() != 0) {
             int read = bufferedInputStream.read();
             ints.add(read);
@@ -110,9 +115,6 @@ public class MyServer implements Server {
         List<String> requestLines = new ArrayList<>();
         while (scanner.hasNext()) {
             requestLines.add(scanner.nextLine());
-        }
-        if (requestLines.size() == 0) {
-            accept.close();
         }
         if (getHomePage(requestLines)) {
             loadHomePage(bufferedWriter, requestLines);

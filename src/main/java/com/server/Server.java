@@ -1,7 +1,5 @@
 package com.server;
 
-import java.io.IOException;
-
 interface Server {
     void run() throws Exception;
 
