@@ -4,8 +4,10 @@ import com.MainServer;
 import com.util.MimeType;
 
 import java.io.*;
+import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -13,7 +15,6 @@ import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.RejectedExecutionException;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -21,26 +22,49 @@ import java.util.stream.Collectors;
 
 public class MyServer implements Server {
 
-    private String fileFolder;
+    private final String fileFolder;
+    private final Integer port;
+    private boolean shouldStop = false;
     static ExecutorService executorService = Executors.newFixedThreadPool(10);
     static Logger log = Logger.getLogger(MainServer.class.getName());
 
-    public void run(String[] args) {
+    public MyServer(String[] args) {
         if (args.length == 2) {
-            startListener(args);
+            fileFolder = args[0];
+            port = Integer.parseInt(args[1]);
         } else {
             throw new IllegalArgumentException("Illegal arguments " + Arrays.toString(args));
         }
     }
 
-    private void startListener(String[] args) {
-        fileFolder = args[0];
+    @Override
+    public void run() throws IOException {
+        startListener();
+    }
+
+    @Override
+    public void stop() throws IOException {
+        stopListener();
+    }
+
+    private void stopListener() throws IOException {
+        shouldStop = true;
+        Socket client = new Socket();
+        SocketAddress socketAddress = new InetSocketAddress(port);
+        client.connect(socketAddress);
+        log.info("Stopping server");
+    }
+
+    private void startListener() throws IOException {
         log.info("Starting server");
-        int port = Integer.parseInt(args[1]);
         try (ServerSocket serverSocket = new ServerSocket(port)) {
             log.info("Server starter at port " + port);
             while (true) {
                 Socket accept = serverSocket.accept();
+                if (shouldStop) {
+                    accept.close();
+                    break;
+                }
                 executorService.submit(() -> {
                     try {
                         process(accept);
@@ -49,9 +73,8 @@ public class MyServer implements Server {
                     }
                 });
             }
-        } catch (IOException | RejectedExecutionException e) {
+        } finally {
             executorService.shutdown();
-            throw new RuntimeException(e);
         }
     }
 
